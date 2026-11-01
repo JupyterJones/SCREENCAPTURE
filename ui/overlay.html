@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Select Capture Area</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent !important;
+      cursor: crosshair !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    #overlayCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 10;
+      cursor: crosshair !important;
+    }
+
+    /* Floating top instruction banner */
+    .instruction-banner {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 17, 23, 0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 28px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      pointer-events: auto;
+    }
+
+    .key-badge {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-cancel {
+      background: rgba(239, 68, 68, 0.25);
+      border: 1px solid rgba(239, 68, 68, 0.6);
+      color: #fca5a5;
+      padding: 5px 12px;
+      border-radius: 14px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    .btn-cancel:hover {
+      background: rgba(239, 68, 68, 0.5);
+      color: #fff;
+    }
+
+    /* Selection Box */
+    #selectionBox {
+      position: absolute;
+      display: none;
+      border: 2px solid #00f0ff;
+      box-shadow: 0 0 16px rgba(0, 240, 255, 0.5), inset 0 0 12px rgba(0, 240, 255, 0.15);
+      z-index: 100;
+      cursor: move;
+    }
+
+    /* Dimension Badge */
+    #dimBadge {
+      position: absolute;
+      top: -34px;
+      left: 0;
+      background: #00f0ff;
+      color: #0b0f19;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Floating Action Bar below/inside box */
+    #actionToolbar {
+      position: absolute;
+      bottom: -48px;
+      right: 0;
+      background: rgba(15, 17, 23, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(0, 240, 255, 0.5);
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+      z-index: 110;
+    }
+
+    .action-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .action-btn-confirm {
+      background: #10b981;
+      color: white;
+    }
+
+    .action-btn-confirm:hover {
+      background: #059669;
+    }
+
+    .action-btn-preset {
+      background: #2563eb;
+      color: white;
+      font-size: 11px;
+    }
+
+    .action-btn-preset:hover {
+      background: #1d4ed8;
+    }
+
+    /* 8 Resize Handles */
+    .handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #ffffff;
+      border: 2px solid #00f0ff;
+      border-radius: 2px;
+      z-index: 105;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+    .handle-n  { top: -6px; left: calc(50% - 6px); cursor: ns-resize; }
+    .handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+    .handle-e  { top: calc(50% - 6px); right: -6px; cursor: ew-resize; }
+    .handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+    .handle-s  { bottom: -6px; left: calc(50% - 6px); cursor: ns-resize; }
+    .handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .handle-w  { top: calc(50% - 6px); left: -6px; cursor: ew-resize; }
+  </style>
+</head>
+<body>
+  <div class="instruction-banner">
+    <span>🎯 <strong>Click & drag to select area</strong></span>
+    <span><span class="key-badge">Enter</span> Confirm</span>
+    <span><span class="key-badge">Esc</span> Cancel</span>
+    <button id="btnCancelOverlay" class="btn-cancel">Cancel (Esc)</button>
+  </div>
+
+  <canvas id="overlayCanvas"></canvas>
+
+  <div id="selectionBox">
+    <div id="dimBadge">0 × 0 px</div>
+    
+    <div class="handle handle-nw" data-handle="nw"></div>
+    <div class="handle handle-n"  data-handle="n"></div>
+    <div class="handle handle-ne" data-handle="ne"></div>
+    <div class="handle handle-e"  data-handle="e"></div>
+    <div class="handle handle-se" data-handle="se"></div>
+    <div class="handle handle-s"  data-handle="s"></div>
+    <div class="handle handle-sw" data-handle="sw"></div>
+    <div class="handle handle-w"  data-handle="w"></div>
+
+    <div id="actionToolbar">
+      <div id="overlayPresets" style="display: flex; gap: 6px; align-items: center;">
+        <button id="btnPresetMobile" class="action-btn action-btn-preset" title="Sample format: 458x812">📱 458×812</button>
+        <button id="btnPreset1080" class="action-btn action-btn-preset">🖥️ 1920×1080</button>
+      </div>
+      <button id="btnConfirmArea" class="action-btn action-btn-confirm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Confirm Selection
+      </button>
+    </div>
+  </div>
+
+  <script src="overlay.js"></script>
+</body>
+</html>
